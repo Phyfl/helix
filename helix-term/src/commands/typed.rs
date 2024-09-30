@@ -643,6 +643,24 @@ fn force_write_quit(
     cx.block_try_flush_writes()?;
     force_quit(cx, &[], event)
 }
+fn optional_write_quit(
+    cx: &mut compositor::Context,
+    args: &[Cow<str>],
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    } 
+    let uk = args.join(" ").parse::<UndoKind>().map_err(|s| anyhow!(s))?;
+    let (view, doc) = current!(cx.editor);
+    if doc.earlier(view, uk) {
+        doc.later(view,uk);
+        cx.editor.set_status("Already at oldest change");
+        write_impl(cx, args.first(), true)?;
+        cx.block_try_flush_writes()?;
+    }
+    quit(cx, &[], event)
+}
 
 /// Results in an error if there are modified buffers remaining and sets editor
 /// error, otherwise returns `Ok(())`. If the current document is unmodified,
@@ -2683,6 +2701,13 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
         aliases: &["wq!", "x!"],
         doc: "Write changes to disk and close the current view forcefully. Accepts an optional path (:wq! some/path.txt)",
         fun: force_write_quit,
+        signature: CommandSignature::positional(&[completers::filename]),
+    },
+    TypableCommand {
+        name: "optional-write-quit",
+        aliases: &["x"],
+        doc: "Write changes to disk if any are made. Otherwise just close. Doesn't require a path.",
+        fun: optional_write_quit,
         signature: CommandSignature::positional(&[completers::filename]),
     },
     TypableCommand {
